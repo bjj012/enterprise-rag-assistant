@@ -66,9 +66,14 @@ with st.sidebar:
     if uploaded_files and st.button("入库并向量化", use_container_width=True):
         progress = st.progress(0)
         for index, uploaded in enumerate(uploaded_files, start=1):
-            with st.spinner(f"正在处理：{uploaded.name}"):
-                ingestion.ingest_upload(uploaded, uploaded.name)
-            progress.progress(index / len(uploaded_files))
+            try:
+                with st.spinner(f"正在处理：{uploaded.name}"):
+                    document_id = ingestion.ingest_upload(uploaded, uploaded.name)
+                st.toast(f"{uploaded.name} 已入库，文档 ID：{document_id}")
+            except Exception as exc:
+                st.error(f"{uploaded.name} 入库失败：{exc}")
+            finally:
+                progress.progress(index / len(uploaded_files))
         st.success("文档已完成入库。")
         time.sleep(0.4)
         st.rerun()
@@ -93,6 +98,10 @@ with st.sidebar:
     st.markdown("### 运行状态")
     st.caption(f"嵌入模型：{settings.embedding_model}")
     st.caption(f"大模型：{settings.qwen_model if settings.qwen_api_key else '本地检索摘要'}")
+    sidebar_stats = vector_store.stats()
+    st.caption(f"向量后端：{sidebar_stats.get('backend', 'unknown')}")
+    if sidebar_stats.get("backend_warning"):
+        st.caption("Chroma 不可用，当前使用本地向量库兜底。")
 
 documents = repository.list_documents()
 stats = vector_store.stats()
@@ -133,6 +142,7 @@ with left:
         render_chat_message("assistant", result.answer)
         st.session_state.messages.append({"role": "assistant", "content": result.answer})
         st.session_state.last_sources = result.sources
+        st.session_state.last_debug = result.retrieval_debug
 
 with right:
     st.markdown("#### 参考来源")
@@ -140,6 +150,8 @@ with right:
         with st.expander("展开检索片段", expanded=True):
             for index, source in enumerate(st.session_state.last_sources, start=1):
                 render_source(source, index)
+        if st.session_state.get("last_debug"):
+            st.caption(f"检索调试：{st.session_state.last_debug}")
     else:
         st.info("知识库问答后，这里会显示召回的父级上下文片段。")
 
