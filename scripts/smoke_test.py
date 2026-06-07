@@ -54,7 +54,12 @@ def main() -> None:
     )
     assert answer.answer
     assert answer.sources
+    assert answer.retrieval_debug["child_hits"] >= 1
     assert "财务" in answer.answer or any("财务" in source.content for source in answer.sources)
+
+    duplicate_document_id = ingestion.ingest_path(sample_path)
+    assert duplicate_document_id == document_id
+    assert len(repository.list_documents()) == 1
 
     chat = rag.answer(
         question="请用一句话介绍你能做什么。",
@@ -65,6 +70,7 @@ def main() -> None:
     assert chat.mode == "chat"
 
     stats = vector_store.stats()
+    assert stats["backend"] in {"local", "chroma"}
     print("智能文档检索助手健康检查通过。")
     print(f"document_id={document_id}, parent_count={stats['parent_count']}, child_count={stats['child_count']}")
 
