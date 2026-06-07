@@ -45,6 +45,16 @@ class DocumentRepository:
             session.flush()
             return int(record.id)
 
+    def get_ready_document_by_hash(self, file_hash: str) -> DocumentRecord | None:
+        with session_scope() as session:
+            row = session.scalars(
+                select(DocumentRecord).where(
+                    DocumentRecord.file_hash == file_hash,
+                    DocumentRecord.status == "ready",
+                )
+            ).first()
+            return self._detach(row, session) if row else None
+
     def add_chunks(
         self,
         document_id: int,
