@@ -31,6 +31,10 @@ class IngestionService:
         return self._persist(processed)
 
     def _persist(self, processed: ProcessedDocument) -> int:
+        existing = self.repository.get_ready_document_by_hash(processed.file_hash)
+        if existing:
+            return existing.id
+
         document_id = self.repository.create_document(
             filename=processed.filename,
             file_type=processed.file_type,
