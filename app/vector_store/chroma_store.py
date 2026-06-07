@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,8 +38,9 @@ class ChromaVectorStore:
                 name=settings.child_collection,
                 metadata={"hnsw:space": "cosine"},
             )
-        except Exception:
+        except Exception as exc:
             self.backend = "local"
+            self.backend_warning = str(exc)
             self.local = LocalVectorStore(settings.chroma_dir)
 
     def add_document_chunks(
@@ -153,11 +156,16 @@ class ChromaVectorStore:
 
     def stats(self) -> dict:
         if self.backend == "local":
-            return self.local.stats()
+            stats = self.local.stats()
+            stats["backend"] = self.backend
+            stats["backend_warning"] = getattr(self, "backend_warning", "")
+            return stats
 
         return {
             "parent_count": self.parent_collection.count(),
             "child_count": self.child_collection.count(),
+            "backend": self.backend,
+            "backend_warning": "",
         }
 
 
@@ -268,10 +276,19 @@ class LocalVectorStore:
         return {"parent_count": len(data["parents"]), "child_count": len(data["children"])}
 
     def _load(self) -> dict:
+        if not self.path.exists():
+            return {"parents": {}, "children": {}}
         return json.loads(self.path.read_text(encoding="utf-8"))
 
     def _save(self, data: dict) -> None:
-        self.path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        fd, temp_path = tempfile.mkstemp(prefix="vectors-", suffix=".json", dir=str(self.path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False)
+            os.replace(temp_path, self.path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
